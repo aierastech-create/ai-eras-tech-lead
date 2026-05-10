@@ -288,11 +288,14 @@ def main():
         st.session_state['auth_mode'] = 'login'
     if 'verify_email' not in st.session_state:
         st.session_state['verify_email'] = None
+    if 'admin_view' not in st.session_state:
+        st.session_state['admin_view'] = True # Default to admin panel if user is admin
 
     # --- Logout Logic ---
     def logout():
         st.session_state['user'] = None
         st.session_state['verify_email'] = None
+        st.session_state['admin_view'] = True
         st.rerun()
 
     # --- Authentication UI ---
@@ -386,38 +389,35 @@ def main():
         st.markdown(f"### Welcome, {user['username']}")
         st.caption(f"📧 {user['email']}")
         st.caption(f"📞 {user['phone']}")
-        st.divider()
-        
-        # Navigation Menu
-        menu_options = ["🏠 Home & Scraper"]
         if user['is_admin']:
-            menu_options.append("🛡️ Admin Panel")
-        
-        choice = st.radio("Navigation", menu_options)
+            st.success("🛡️ Admin Account")
         st.divider()
         
         if st.button("Logout", use_container_width=True):
             logout()
 
-    # --- Page Content ---
-    if choice == "🛡️ Admin Panel" and user['is_admin']:
+    # --- Page Content Logic ---
+    # If Admin, show Admin Panel by default unless they toggle to Scraper
+    if user['is_admin'] and st.session_state.get('admin_view', True):
         st.title("🛡️ Admin Control Center")
-        st.markdown("Manage users, monitor sign-ups, and control application access.")
+        st.info("Logged in as Administrator. You have full access to user management.")
         
+        # Helper to switch views for admin
+        if st.button("🚀 Switch to Scraper Tool"):
+            st.session_state['admin_view'] = False
+            st.rerun()
+
         users = db.get_all_users()
         if not users:
             st.info("No users found.")
         else:
-            # Filter out the current admin from the management list
             other_users = [u for u in users if u['email'] != user['email']]
-            
             st.divider()
             st.subheader("👥 User Management Directory")
             
             if not other_users:
                 st.info("No other users have signed up yet.")
             else:
-                # Header Row
                 h1, h2, h3, h4, h5 = st.columns([2, 3, 2, 2, 2])
                 h1.markdown("**Username**")
                 h2.markdown("**Email**")
@@ -439,21 +439,25 @@ def main():
                             db.update_user_status(u['id'], is_active=is_active)
                             st.rerun()
                     
-                    with st.expander(f"More options for {u['username']}"):
+                    with st.expander(f"Options for {u['username']}"):
                         col_del, col_role = st.columns(2)
                         with col_del:
-                            if st.button("🗑️ Delete Account", key=f"del_{u['id']}", type="secondary"):
+                            if st.button("🗑️ Delete", key=f"del_{u['id']}", type="secondary"):
                                 db.delete_user(u['id'])
                                 st.rerun()
                         with col_role:
-                            is_adm = st.checkbox("Make Admin", value=bool(u['is_admin']), key=f"adm_{u['id']}")
+                            is_adm = st.checkbox("Admin", value=bool(u['is_admin']), key=f"adm_{u['id']}")
                             if is_adm != bool(u['is_admin']):
                                 db.update_user_status(u['id'], is_admin=is_adm)
                                 st.rerun()
                     st.divider()
         return
 
-    # --- Scraper Content (Default) ---
+    # --- Scraper Content (Default for Users or Admin-selected) ---
+    if user['is_admin']:
+        if st.button("⬅️ Back to Admin Panel"):
+            st.session_state['admin_view'] = True
+            st.rerun()
 
     # --- Scraper Content ---
     st.title("🗺️ Google Maps Numbers & Email Scraper")
