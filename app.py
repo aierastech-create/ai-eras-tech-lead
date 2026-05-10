@@ -381,19 +381,79 @@ def main():
     # --- Main Application (Authenticated) ---
     user = st.session_state['user']
     
+    # --- Sidebar Navigation ---
     with st.sidebar:
         st.markdown(f"### Welcome, {user['username']}")
         st.caption(f"📧 {user['email']}")
         st.caption(f"📞 {user['phone']}")
+        st.divider()
         
-    # Sidebar Info
-    st.sidebar.markdown(f"### Welcome, {user['username']}")
-    st.sidebar.caption(f"📧 {user['email']}")
-    st.sidebar.caption(f"📞 {user['phone']}")
-    
-    st.sidebar.divider()
-    if st.sidebar.button("Logout", use_container_width=True):
-        logout()
+        # Navigation Menu
+        menu_options = ["🏠 Home & Scraper"]
+        if user['is_admin']:
+            menu_options.append("🛡️ Admin Panel")
+        
+        choice = st.radio("Navigation", menu_options)
+        st.divider()
+        
+        if st.button("Logout", use_container_width=True):
+            logout()
+
+    # --- Page Content ---
+    if choice == "🛡️ Admin Panel" and user['is_admin']:
+        st.title("🛡️ Admin Control Center")
+        st.markdown("Manage users, monitor sign-ups, and control application access.")
+        
+        users = db.get_all_users()
+        if not users:
+            st.info("No users found.")
+        else:
+            # Filter out the current admin from the management list
+            other_users = [u for u in users if u['email'] != user['email']]
+            
+            st.divider()
+            st.subheader("👥 User Management Directory")
+            
+            if not other_users:
+                st.info("No other users have signed up yet.")
+            else:
+                # Header Row
+                h1, h2, h3, h4, h5 = st.columns([2, 3, 2, 2, 2])
+                h1.markdown("**Username**")
+                h2.markdown("**Email**")
+                h3.markdown("**Phone**")
+                h4.markdown("**Verified**")
+                h5.markdown("**Access Control**")
+                st.divider()
+
+                for u in other_users:
+                    c1, c2, c3, c4, c5 = st.columns([2, 3, 2, 2, 2])
+                    c1.write(u['username'])
+                    c2.write(u['email'])
+                    c3.write(u['phone'])
+                    c4.write("✅ Verified" if u['is_verified'] else "❌ Unverified")
+                    
+                    with c5:
+                        is_active = st.toggle("Allow Access", value=bool(u['is_active']), key=f"act_{u['id']}")
+                        if is_active != bool(u['is_active']):
+                            db.update_user_status(u['id'], is_active=is_active)
+                            st.rerun()
+                    
+                    with st.expander(f"More options for {u['username']}"):
+                        col_del, col_role = st.columns(2)
+                        with col_del:
+                            if st.button("🗑️ Delete Account", key=f"del_{u['id']}", type="secondary"):
+                                db.delete_user(u['id'])
+                                st.rerun()
+                        with col_role:
+                            is_adm = st.checkbox("Make Admin", value=bool(u['is_admin']), key=f"adm_{u['id']}")
+                            if is_adm != bool(u['is_admin']):
+                                db.update_user_status(u['id'], is_admin=is_adm)
+                                st.rerun()
+                    st.divider()
+        return
+
+    # --- Scraper Content (Default) ---
 
     # --- Scraper Content ---
     st.title("🗺️ Google Maps Numbers & Email Scraper")
