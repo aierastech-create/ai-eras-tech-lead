@@ -1,5 +1,10 @@
+.env
+client_secrets.json
 __pycache__/
 *.pyc
 result.csv
 output.csv
 playwright/.cache/ 
+users.db
+*.db
+.streamlit/

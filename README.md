@@ -1,5 +1,5 @@
 # Google-Maps-Scrapper
-This Python script utilizes the Playwright library to perform web scraping and data extraction from Google Maps. It is particularly designed for obtaining information about businesses, including their name, address, website, phone number, reviews, and more.
+This Python project utilizes the Playwright library to perform web scraping and data extraction from Google Maps, and includes a modern Streamlit web interface. It is particularly designed for obtaining information about businesses, including their name, address, website, phone number, reviews, and extracting emails directly from their websites.
 
 ## Multiple Branches
 The repo currently has 3 branches
@@ -18,7 +18,6 @@ To do a custom web scraping project you can find me on Upwork
 - [Key Features](#key-features)
 - [Installation](#installation)
 - [Usage](#usage)
-- [Example](#example)
 - [Notes](#notes)
 - [Video Example](#video-example)
 
@@ -27,19 +26,14 @@ To do a custom web scraping project you can find me on Upwork
 - Google Chrome or Chromium browser installed (for Playwright)
 
 ## Key Features
-- Data Scraping: The script scrapes data from Google Maps listings, extracting valuable information about businesses, such as their name, address, website, and contact details.
-
-- Review Analysis: It extracts review counts and average ratings, providing insights into businesses' online reputation.
-
-- Business Type Detection: The script identifies whether a business offers in-store shopping, in-store pickup, or delivery services.
-
-- Operating Hours: It extracts information about the business's operating hours.
-
-- Introduction Extraction: The script also scrapes introductory information about the businesses when available.
-
-- Data Cleansing: It cleanses and organizes the scraped data, removing redundant or unnecessary columns.
-
-- CSV Export: The cleaned data is exported to a CSV file for further analysis or integration with other tools.
+- **Streamlit Web UI**: An easy-to-use web interface for scraping without using the command line!
+- **Data Scraping**: Scrapes data from Google Maps listings, extracting name, address, website, and contact details.
+- **Email Extraction**: Automatically visits the scraped websites and extracts associated email addresses!
+- **Review Analysis**: Extracts review counts and average ratings.
+- **Business Type Detection**: Identifies whether a business offers in-store shopping, in-store pickup, or delivery services.
+- **Operating Hours**: Extracts information about the business's operating hours.
+- **Introduction Extraction**: Scrapes introductory information about the businesses when available.
+- **CSV Export**: The cleaned data can be downloaded as a CSV file directly from the web interface.
 
 ## Installation
 
@@ -59,29 +53,17 @@ To do a custom web scraping project you can find me on Upwork
 
 ## Usage
 
-Run the script with your desired search term and number of results:
+Run the Streamlit web application:
 
 ```bash
-python main.py -s "Turkish Restaurants in Toronto Canada" -t 20
+streamlit run app.py
 ```
 
-- `-s` or `--search`: Search query for Google Maps (default: "turkish stores in toronto Canada")
-- `-t` or `--total`: Number of results to scrape (default: 1)
-- `-o` or `--output`: Output CSV file path (default: result.csv)
-- `--append`: Append results to the output file instead of overwriting (default: off)
-
-## Example
-
-Append new results to an existing CSV file:
-```bash
-python main.py -s "Turkish Restaurants in Toronto Canada" -t 20 -o toronto_turkish_restaurants.csv --append
-```
-
-The script will launch a browser, perform the search, and start scraping information. Progress will be displayed in the terminal, and results will be saved to the specified CSV file. If `--append` is used, new results will be added to the end of the file without removing previous data.
+The script will launch a web interface in your default browser. From the sidebar, you can enter your **Search Query** (e.g. "Turkish Restaurants in Toronto Canada"), specify the **Total Results to Scrape**, and optionally choose to **Extract Emails from Websites**. Progress will be displayed directly in the UI, and the final results can be downloaded as a CSV file.
 
 ## Notes
-- The script opens a visible browser window (not headless) for scraping.
-- Google Maps DOM may change, which can break the script. If you encounter issues, update the XPaths in `main.py`.
+- The script opens a visible browser window (not headless) for scraping Google Maps data.
+- Google Maps DOM may change, which can break the script. If you encounter issues, update the XPaths in `app.py`.
 - Avoid running too many scrapes in a short period to prevent being blocked by Google.
 
 ## Video Example
