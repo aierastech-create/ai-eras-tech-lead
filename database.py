@@ -1,33 +1,51 @@
 import os
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 import hashlib
 from dotenv import load_dotenv
-from supabase import create_client, Client
+from pymongo import MongoClient
+from bson import ObjectId
 
 # Load environment variables
 load_dotenv()
 
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE")
+MONGODB_URI = os.getenv("MONGODB_URI")
 
-if not SUPABASE_URL or not SUPABASE_KEY:
-    logging.error("Supabase credentials not found in environment variables.")
-    supabase = None
+if not MONGODB_URI:
+    logging.error("MongoDB URI not found in environment variables.")
+    client = None
+    db = None
+    users_collection = None
 else:
-    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    try:
+        client = MongoClient(MONGODB_URI)
+        # Use database name 'google_maps_scraper'
+        db = client["google_maps_scraper"]
+        users_collection = db["users"]
+    except Exception as e:
+        logging.error(f"Error connecting to MongoDB: {e}")
+        client = None
+        db = None
+        users_collection = None
 
 def hash_password(password):
     """Simple SHA256 hashing for passwords."""
     return hashlib.sha256(password.encode()).hexdigest()
 
+def serialize_user(user_doc):
+    """Convert MongoDB _id to string id for compatibility with the rest of the application."""
+    if not user_doc:
+        return None
+    user_doc = dict(user_doc)
+    user_doc['id'] = str(user_doc['_id'])
+    return user_doc
+
 def init_db():
     """
     Initializes the database. 
-    Note: In Supabase, you should run the SQL schema in the dashboard.
-    This function will ensure the Super Admin exists.
+    Ensures the Super Admin exists.
     """
-    if not supabase:
+    if users_collection is None:
         return
 
     admin_email = os.getenv("ADMIN_EMAIL", "aierastech@gmail.com")
@@ -36,124 +54,142 @@ def init_db():
 
     # Check if admin exists
     try:
-        response = supabase.table("ai-eras-lead-user-table").select("*").eq("email", admin_email).execute()
-        if not response.data:
+        user = users_collection.find_one({"email": admin_email})
+        if not user:
             # Create admin
-            supabase.table("ai-eras-lead-user-table").insert({
+            users_collection.insert_one({
                 "username": "Admin",
                 "email": admin_email,
                 "password": hashed_pass,
                 "is_verified": True,
                 "is_active": True,
-                "is_admin": True
-            }).execute()
-            logging.info("Super Admin created in Supabase.")
+                "is_admin": True,
+                "phone": "",
+                "otp": None,
+                "last_login": None,
+                "created_at": datetime.now(timezone.utc)
+            })
+            logging.info("Super Admin created in MongoDB.")
         else:
             # Update admin password just in case
-            supabase.table("ai-eras-lead-user-table").update({
-                "password": hashed_pass,
-                "is_admin": True,
-                "is_active": True
-            }).eq("email", admin_email).execute()
-            logging.info("Super Admin updated in Supabase.")
+            users_collection.update_one(
+                {"email": admin_email},
+                {"$set": {
+                    "password": hashed_pass,
+                    "is_admin": True,
+                    "is_active": True
+                }}
+            )
+            logging.info("Super Admin updated in MongoDB.")
     except Exception as e:
-        logging.error(f"Error initializing Supabase: {e}")
+        logging.error(f"Error initializing MongoDB: {e}")
 
 def register_user(username, email, phone, password, is_admin=False):
     """Registers a new user."""
-    if not supabase:
+    if users_collection is None:
         return False
     
     hashed = hash_password(password)
     try:
-        response = supabase.table("ai-eras-lead-user-table").insert({
+        # Check uniqueness of username and email
+        if users_collection.find_one({"$or": [{"username": username}, {"email": email}]}):
+            logging.warning(f"Registration failed: username '{username}' or email '{email}' already exists.")
+            return False
+
+        result = users_collection.insert_one({
             "username": username,
             "email": email,
             "phone": phone,
             "password": hashed,
-            "is_admin": is_admin
-        }).execute()
-        return len(response.data) > 0
+            "is_verified": False,
+            "is_active": False,
+            "is_admin": is_admin,
+            "otp": None,
+            "last_login": None,
+            "created_at": datetime.now(timezone.utc)
+        })
+        return result.acknowledged
     except Exception as e:
         logging.error(f"Registration error: {e}")
         return False
 
 def get_user_by_email(email):
-    if not supabase:
+    if users_collection is None:
         return None
     try:
-        response = supabase.table("ai-eras-lead-user-table").select("*").eq("email", email).execute()
-        return response.data[0] if response.data else None
+        user = users_collection.find_one({"email": email})
+        return serialize_user(user)
     except Exception as e:
         logging.error(f"Error fetching user by email: {e}")
         return None
 
 def get_user_by_username(username):
-    if not supabase:
+    if users_collection is None:
         return None
     try:
-        response = supabase.table("ai-eras-lead-user-table").select("*").eq("username", username).execute()
-        return response.data[0] if response.data else None
+        user = users_collection.find_one({"username": username})
+        return serialize_user(user)
     except Exception as e:
         logging.error(f"Error fetching user by username: {e}")
         return None
 
 def authenticate_user(identifier, password):
     """Authenticates by email or username."""
-    if not supabase:
+    if users_collection is None:
         return None
     
     hashed = hash_password(password)
     try:
-        # Supabase doesn't support OR natively in a simple way like SQL without specialized syntax
-        # We'll check email first, then username
-        user = get_user_by_email(identifier)
-        if not user:
-            user = get_user_by_username(identifier)
-            
-        if user and user['password'] == hashed:
-            # Update last login
-            now = datetime.now().isoformat()
-            supabase.table("ai-eras-lead-user-table").update({"last_login": now}).eq("id", user['id']).execute()
-            return user
+        user = users_collection.find_one({
+            "$or": [{"email": identifier}, {"username": identifier}],
+            "password": hashed
+        })
+        if user:
+            now = datetime.now(timezone.utc).isoformat()
+            users_collection.update_one({"_id": user["_id"]}, {"$set": {"last_login": now}})
+            # Re-fetch user or just update in dictionary
+            user["last_login"] = now
+            return serialize_user(user)
     except Exception as e:
         logging.error(f"Authentication error: {e}")
         
     return None
 
 def set_user_otp(email, otp):
-    if not supabase:
+    if users_collection is None:
         return
     try:
-        supabase.table("ai-eras-lead-user-table").update({"otp": otp}).eq("email", email).execute()
+        users_collection.update_one({"email": email}, {"$set": {"otp": otp}})
     except Exception as e:
         logging.error(f"Error setting OTP: {e}")
 
 def verify_user_otp(email, otp):
-    if not supabase:
+    if users_collection is None:
         return False
     try:
-        response = supabase.table("ai-eras-lead-user-table").select("*").eq("email", email).eq("otp", otp).execute()
-        if response.data:
-            user_id = response.data[0]['id']
-            supabase.table("ai-eras-lead-user-table").update({"is_verified": True, "otp": None}).eq("id", user_id).execute()
+        user = users_collection.find_one({"email": email, "otp": otp})
+        if user:
+            users_collection.update_one(
+                {"_id": user["_id"]},
+                {"$set": {"is_verified": True, "otp": None}}
+            )
             return True
     except Exception as e:
         logging.error(f"OTP verification error: {e}")
     return False
 
 def get_all_users():
-    if not supabase:
+    if users_collection is None:
         return []
     try:
-        response = supabase.table("ai-eras-lead-user-table").select("*").order("created_at", desc=True).execute()
-        return response.data
+        users = users_collection.find().sort("created_at", -1)
+        return [serialize_user(u) for u in users]
     except Exception as e:
         logging.error(f"Error fetching all users: {e}")
         return []
 
 def update_user_status(user_id, is_active=None, is_admin=None):
-    if not supabase:
+    if users_collection is None:
         return
     updates = {}
     if is_active is not None:
@@ -163,14 +199,14 @@ def update_user_status(user_id, is_active=None, is_admin=None):
     
     if updates:
         try:
-            supabase.table("ai-eras-lead-user-table").update(updates).eq("id", user_id).execute()
+            users_collection.update_one({"_id": ObjectId(user_id)}, {"$set": updates})
         except Exception as e:
             logging.error(f"Error updating user status: {e}")
 
 def delete_user(user_id):
-    if not supabase:
+    if users_collection is None:
         return
     try:
-        supabase.table("ai-eras-lead-user-table").delete().eq("id", user_id).execute()
+        users_collection.delete_one({"_id": ObjectId(user_id)})
     except Exception as e:
         logging.error(f"Error deleting user: {e}")

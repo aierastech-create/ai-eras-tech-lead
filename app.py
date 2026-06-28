@@ -501,7 +501,10 @@ def main():
         st.subheader("Results")
         st.dataframe(df)
         csv = df.to_csv(index=False).encode('utf-8')
-        st.download_button(label="Download Data as CSV", data=csv, file_name="scraped_results.csv", mime="text/csv")
+        safe_filename = re.sub(r'[\\/*?:"<>|]', "", search_query).strip()
+        if not safe_filename:
+            safe_filename = "scraped_results"
+        st.download_button(label="Download Data as CSV", data=csv, file_name=f"{safe_filename}.csv", mime="text/csv")
 
 if __name__ == "__main__":
     main()
